@@ -1,0 +1,237 @@
+#!/bin/sh
+# run the configure script for a native Windows build
+
+if [ -f ../configure.in ]; then
+   #  we're in the windows directory, so we need to go up a level
+   cd ..
+fi
+
+if [ ! -f configure ]; then
+   autoheader
+   #   creates config.h.in
+   autoconf
+   #   creates configure
+fi
+
+####### configure options:
+# --help                          Show configure options and a short description
+#
+# --host=i686-w64-mingw32         Use the mingw cross-compiler to build a 'native' windows binary
+# --enable-mingw32                Use mingw32 for a Windows GUI
+# --enable-static-linking         Use static linking instead of dynamic linking (and not have
+#                                 to put all the .DLLs in the path or the same dir as Privoxy)
+# --disable-pcre2                 Don't try to use the pcre2 library even if it's available
+# --disable-pthread               Use native threads instead of POSIX pthreads library
+# --disable-dynamic-pcre          Use the built-in, static pcre, even if libpcre is available
+# --with-docbook=yes              Enable docbook documentation creation
+
+
+export CFLAGS="-O2"
+# note: configure.in line 155
+#         if test "X$CFLAGS" = "X "; then # if CFLAGS were unset (see above)
+#   In other words, if you set CFLAGS you need to include -O2 if you want optimization
+#   assume I'll set cflags below, so set O2 now
+
+export CPPFLAGS=""
+# start with initially empty flags
+
+export LDFLAGS=""
+# start with initially empty flags
+
+export LIBS=""
+# start with initially empty flags
+
+
+CFLAGS="${CFLAGS} -fdiagnostics-color=always"
+# Have gcc diagnostics be in color even if stderr is not going to a terminal.
+# It's nice having warnings in color even if I run a script that does
+#   'make 2>&1 | tee log.make'
+
+CFLAGS="${CFLAGS} -fstack-protector-strong"
+LDFLAGS="${LDFLAGS} -fstack-protector-strong"
+# -fstack-protector-strong:  enable stack checking.
+# NOTE: need to specify when compiling _and_ linking
+# stack-protector-strong: better balance between security and performance.
+#   This flag protects more kinds of vulnerable functions than -fstack-protector does,
+#   but not every function, providing better performance than -fstack-protector-all.
+# see : https://en.wikipedia.org/wiki/Buffer_overflow_protection
+# NOTE: needs static linking or the following in the path:
+#         /usr/i686-w64-mingw32/sys-root/mingw/bin/libssp-0.dll
+
+CFLAGS="${CFLAGS} -D_FORTIFY_SOURCE=3"
+# https://www.gnu.org/software/libc/manual/html_node/Source-Fortification.html
+# -D_FORTIFY_SOURCE:  detect some buffer overflow errors
+#     ***>> requires compiler optimization level 1 or above <<***
+# see : https://gcc.gnu.org/legacy-ml/gcc-patches/2004-09/msg02055.html
+#   The difference between -D_FORTIFY_SOURCE=1 and -D_FORTIFY_SOURCE=2 is e.g. for
+#     struct S { struct T { char buf[5]; int x; } t; char buf[20]; } var;
+#   With -D_FORTIFY_SOURCE=1,
+#     strcpy (&var.t.buf[1], "abcdefg");
+#   is not considered an overflow (object is whole VAR), while with -D_FORTIFY_SOURCE=2
+#     strcpy (&var.t.buf[1], "abcdefg");
+#   will be considered a buffer overflow.
+
+### CFLAGS="${CFLAGS} -march=native"
+# -march=cpu-type
+#   Generate instructions for the machine type cpu-type.  In contrast to -mtune=cpu-type, which merely tunes the
+#   generated code for the specified cpu-type, -march=cpu-type allows GCC to generate code that may not run at all on
+#   processors other than the one indicated.
+#   Specifying -march=cpu-type implies -mtune=cpu-type.
+#
+# -march=native
+#   This selects the CPU to generate code for at compilation time by determining the processor type of the compiling
+#   machine.  Using -march=native enables all instruction subsets supported by the local machine (hence the result
+#   might not run on different machines).  Using -mtune=native produces code optimized for the local machine under
+#   the constraints of the selected instruction set.
+
+LDFLAGS="${LDFLAGS} -Wl,--nxcompat"
+# https://en.wikipedia.org/wiki/Data_Execution_Prevention
+#   Enable DEP with -Wl,--nxcompat
+# also called NX or nxcompat for "no execute"  see: https://en.wikipedia.org/wiki/NX_bit
+#   $ peflags -v privoxy.exe
+#   privoxy.exe: coff(0x0106[+executable_image,+line_nums_stripped,+32bit_machine]) pe(0x0140[+dynamicbase,+nxcompat])
+
+LDFLAGS="${LDFLAGS} -Wl,--dynamicbase,--export-all-symbols"
+# https://en.wikipedia.org/wiki/Address_space_layout_randomization
+# https://stackoverflow.com/questions/24283918/how-can-i-enable-aslr-dep-and-safeseh-on-an-exe-in-codeblocks-using-mingw
+#   ASLR with gcc has a problem: -Wl,--dynamicbase doesn't emit the necessary relocation table.
+#   As a workaround, you can pass -Wl,--dynamicbase,--export-all-symbols
+#   NOTE: you can't have both this and profiling (cflags='-pg') enabled!
+
+CFLAGS="${CFLAGS} -Wall"
+# see: http://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html
+# -Wall   doesn't actually turn on all warnings, so add  -Wextra
+#    but then plenty too many complaints by
+#      -Wmissing-field-initializers
+#      -Wsign-compare
+#      -Wtype-limits
+#      -Wunused-but-set-parameter
+#      -Wunused-but-set-variable
+CFLAGS="${CFLAGS} -Wextra -Wno-missing-field-initializers -Wno-sign-compare -Wno-type-limits"
+CFLAGS="${CFLAGS} -Wno-unused-parameter -Wno-unused-but-set-variable"
+
+#-no-# CFLAGS="${CFLAGS} -Wconversion"
+#   way too many warnings for things that don't look like a problem
+
+CFLAGS="${CFLAGS} -Wno-deprecated-declarations"
+#   way too many warnings in openssl.c about RSA deprecated-declarations
+
+#-no-# CFLAGS="${CFLAGS} -Werror"
+# Turn all warnings into errors.
+#   Privoxy still has a few warnings that are not a problem
+
+CFLAGS="${CFLAGS} -Wformat=2"
+# -Wformat is enabled by -Wall.
+# -Wformat=2 is equivalent to -Wformat -Wformat-nonliteral -Wformat-security -Wformat-y2k
+#   -Wformat-security : also warn about uses of format functions that represent possible security problems.
+
+CFLAGS="${CFLAGS} -Wlogical-op"
+# Warn about suspicious uses of logical operators in expressions.
+
+CFLAGS="${CFLAGS} -Wshadow"
+# Warn whenever a local variable or type declaration shadows
+# another variable or whenever a built-in function is shadowed.
+
+#-no-# CFLAGS="${CFLAGS} -Wwrite-strings"
+# These warnings help you find at compile time code that can try to write
+# into a string constant, but only if you have been very careful about
+# using const in declarations and prototypes.
+# >>> Otherwise, it is just a nuisance. <<<  -- this, very much this
+
+# why does the mingw library _not_ include .a files for libpcre?
+# *sigh* build my own pcre so I can do static linking
+# Get the 8.x PCRE library from
+#   https://sourceforge.net/projects/pcre/files/pcre/
+# Get the 10.x PCRE2 library from
+#   https://github.com/PCRE2Project/pcre2/releases
+#
+#
+usepcre2=yes
+#
+#
+if [ "$usepcre2" = "yes" ]; then
+    PCREOPT=""
+    inc="/source/pcre2-10.47/src/"
+      # need pcre2.h
+    lib="/source/pcre2-10.47/.libs"
+      # need libpcre2-8.a & libpcre2-posix.a
+else
+    PCREOPT="--disable-pcre2"
+    inc="/source/pcre-8.45/"
+    lib="/source/pcre-8.45/.libs"
+fi
+CPPFLAGS="${CPPFLAGS} -I${inc}"
+LDFLAGS="${LDFLAGS} -L${lib}"
+
+# pick a library for doing https interception (ie. playing man-in-the-middle)
+#   mbedtls
+#   openssl
+#   none
+mitmlib="mbedtls"
+
+if [ "$mitmlib" = "mbedtls" ]; then
+MITMOPT="--with-mbedtls"
+
+# mbedtls
+# Get the 3.6.x mbedtls library from  https://github.com/Mbed-TLS/mbedtls/tags
+# Release Notes: https://github.com/Mbed-TLS/mbedtls/releases?q=3.6.3
+
+inc="/source/mbedtls-3.6.5/include"
+lib="/source/mbedtls-3.6.5/library"
+CPPFLAGS="${CPPFLAGS} -I${inc}"
+LDFLAGS="${LDFLAGS} -L${lib}"
+LIBS="${LIBS} -lbcrypt"
+#  fixes the  undefined reference to `BCryptGenRandom@16'
+
+
+elif [ "$mitmlib" = "openssl" ]; then
+MITMOPT="--with-openssl"
+
+# OpenSSL
+#   using the cygwin supplied mingw32 openssl library
+
+
+else
+  MITMOPT=""
+fi
+
+# brotli
+# Get the brotli library from  https://github.com/google/brotli/releases
+inc="/source/brotli-1.2.0/build/installed/include"
+lib="/source/brotli-1.2.0/build/installed/lib"
+BROTLIOPT="--with-brotli"
+CPPFLAGS="${CPPFLAGS} -I${inc}"
+LDFLAGS="${LDFLAGS} -L${lib}"
+
+# zstd
+# Get the zstd library from  https://github.com/facebook/zstd
+inc="/source/zstd-1.5.7/lib"
+lib="/source/zstd-1.5.7/lib"
+CPPFLAGS="${CPPFLAGS} -I${inc}"
+LDFLAGS="${LDFLAGS} -L${lib}"
+
+
+###
+echo "CFLAGS=${CFLAGS}"
+echo "CPPFLAGS=${CPPFLAGS}"
+echo "LDFLAGS=${LDFLAGS}"
+
+# ./configure cross-compilation options:
+#    --build: the system on which the program will be built.
+#    --host:  the system on which the generated program will run.
+#    --target: only used to build a cross-compiling toolchain.
+
+./configure  --host=i686-w64-mingw32  --enable-mingw32  --enable-zlib \
+             --enable-compression  \
+             --enable-extended-statistics \
+             ${PCREOPT} \
+             --enable-pcre-host-patterns \
+             --enable-static-linking \
+             --enable-strptime-sanity-checks \
+             --disable-pthread  \
+             --with-brotli  \
+             --with-zstd  \
+             ${MITMOPT} \
+             --with-docbook=yes
+
+#  -- done --

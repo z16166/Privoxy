@@ -1,0 +1,18 @@
+# This is the Privoxy web site.
+#
+# If the robot is connecting through Privoxy, then the
+# control interface is at /config.   It isn't very useful
+# to index it, and you're likely to break stuff.  So go away!
+#
+# Even if you're not connected through Privoxy, the 
+# one "Privoxy is not working" page there is not very
+# interesting.
+
+User-agent: *
+Disallow: /config/
+Disallow: /actions/
+Disallow: /submit/
+
+# The /gitweb can be crawled "endlessly" causing high load
+# on the webserver.
+Disallow: /gitweb/
