@@ -42,12 +42,13 @@
 #include "config.h"
 #include "miscutil.h"
 
-/* For gettimeofday() */
+/* For gettimeofday() / _ftime() */
+#ifdef _WIN32
+#include <sys/timeb.h>
+#else
 #include <sys/time.h>
-
-#if !defined(_WIN32)
 #include <unistd.h>
-#endif /* !defined(_WIN32) */
+#endif
 
 #include <errno.h>
 #include <assert.h>
@@ -450,13 +451,20 @@ static size_t get_log_timestamp(char *buffer, size_t buffer_size)
    size_t length;
    time_t now;
    struct tm tm_now;
-   struct timeval tv_now; /* XXX: stupid name */
    long msecs;
    int msecs_length = 0;
 
+#ifdef _WIN32
+   struct _timeb tb;
+   _ftime(&tb);
+   msecs = tb.millitm;
+   now = (time_t)tb.time;
+#else
+   struct timeval tv_now; /* XXX: stupid name */
    gettimeofday(&tv_now, NULL);
    msecs = tv_now.tv_usec / 1000;
    now = tv_now.tv_sec;
+#endif
 
 #ifdef HAVE_LOCALTIME_R
    tm_now = *localtime_r(&now, &tm_now);

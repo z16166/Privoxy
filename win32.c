@@ -130,6 +130,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
    int res;
 #ifndef _WIN_CONSOLE
    HANDLE hInitCompleteEvent = NULL;
+
+   /* Enable DPI Awareness so it scales nicely on high-DPI Windows */
+   {
+      HMODULE hUser32 = GetModuleHandle("user32.dll");
+      if (hUser32)
+      {
+         typedef BOOL(WINAPI * SetProcessDPIAwareProc)(VOID);
+         SetProcessDPIAwareProc setDPIAware =
+             (SetProcessDPIAwareProc)GetProcAddress(hUser32, "SetProcessDPIAware");
+         if (setDPIAware)
+         {
+            setDPIAware();
+         }
+      }
+   }
 #endif
 
 

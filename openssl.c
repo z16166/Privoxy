@@ -31,7 +31,9 @@
  *********************************************************************/
 
 #include <string.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <openssl/bn.h>
 #include <openssl/opensslv.h>
@@ -39,11 +41,7 @@
 #include <openssl/sha.h>
 #include <openssl/x509v3.h>
 #ifdef _WIN32
-/* https://www.openssl.org/docs/faq.html
-   I’ve compiled a program under Windows and it crashes: Why?
-   tl,dr: because it needs this include:
-*/
-#include <openssl/applink.c>
+/* #include <openssl/applink.c> */
 #endif /* _WIN32 */
 
 #include "config.h"
@@ -70,7 +68,11 @@ static int generate_host_certificate(struct client_state *csp);
 static void free_client_ssl_structures(struct client_state *csp);
 static void free_server_ssl_structures(struct client_state *csp);
 static int ssl_store_cert(struct client_state *csp, X509 *crt);
+#ifdef __GNUC__
 static void log_ssl_errors(int debuglevel, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
+#else
+static void log_ssl_errors(int debuglevel, const char* fmt, ...);
+#endif
 
 static int ssl_inited = 0;
 
@@ -1723,11 +1725,15 @@ exit:
 static int set_subject_alternative_name(X509 *cert, X509 *issuer, const char *hostname)
 {
    size_t altname_len = strlen(hostname) + sizeof(CERTIFICATE_ALT_NAME_PREFIX);
-   char alt_name_buf[altname_len];
+   char *alt_name_buf = malloc(altname_len);
+   int ret;
+   if (alt_name_buf == NULL) return 0;
 
-   snprintf(alt_name_buf, sizeof(alt_name_buf),
+   snprintf(alt_name_buf, altname_len,
       CERTIFICATE_ALT_NAME_PREFIX"%s", hostname);
-   return set_x509_ext(cert, issuer, NID_subject_alt_name, alt_name_buf);
+   ret = set_x509_ext(cert, issuer, NID_subject_alt_name, alt_name_buf);
+   free(alt_name_buf);
+   return ret;
 }
 
 
@@ -1862,7 +1868,8 @@ static int generate_host_certificate(struct client_state *csp)
       serial_num_size = 1;
    }
 
-   char serial_num_text[serial_num_size];  /* Buffer for serial number */
+   char *serial_num_text = malloc(serial_num_size);  /* Buffer for serial number */
+   if (serial_num_text == NULL) { ret = -1; goto exit; }
    ret = snprintf(serial_num_text, (size_t)serial_num_size, "%lu%lu",
       certificate_serial_time, certificate_serial);
    if (ret < 0 || ret >= serial_num_size)
@@ -2227,6 +2234,7 @@ exit:
    freez(cert_opt.subject_key);
    freez(cert_opt.output_file);
    freez(key_buf);
+   free(serial_num_text);
 
    return ret;
 }

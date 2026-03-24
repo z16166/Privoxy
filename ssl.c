@@ -30,7 +30,9 @@
  *********************************************************************/
 
 #include <string.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <mbedtls/version.h>
 #include "mbedtls/sha256.h"

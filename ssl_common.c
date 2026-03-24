@@ -31,7 +31,9 @@
 #include <string.h>
 
 #include <ctype.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 #include "config.h"
 #include "project.h"
 #include "miscutil.h"
@@ -380,7 +382,8 @@ extern void ssl_send_certificate_error(struct client_state *csp)
    /*
     * Joining all blocks in one long message
     */
-   char message[message_len];
+   char *message = malloc(message_len);
+   if (message == NULL) return;
    memset(message, 0, message_len);
 
    strlcpy(message, message_begin, message_len);
@@ -395,7 +398,8 @@ extern void ssl_send_certificate_error(struct client_state *csp)
                                            /* +1 for terminating null */
          size_t base64_len = 4 * ((strlen(cert->file_buf) + 2) / 3) + 1;
          size_t olen = 0;
-         char base64_buf[base64_len];
+         char *base64_buf = malloc(base64_len);
+         if (base64_buf == NULL) continue;
 
          memset(base64_buf, 0, base64_len);
 
@@ -413,14 +417,15 @@ extern void ssl_send_certificate_error(struct client_state *csp)
          strlcat(message, cert->info_buf, message_len);
          strlcat(message, "</pre>\n",     message_len);
 
-         if (ret == 0)
-         {
-            strlcat(message, "<a href=\"data:application/x-x509-ca-cert;base64,",
-               message_len);
-            strlcat(message, base64_buf, message_len);
-            strlcat(message, "\">Download certificate</a>", message_len);
-         }
-      }
+          if (ret == 0)
+          {
+             strlcat(message, "<a href=\"data:application/x-x509-ca-cert;base64,",
+                message_len);
+             strlcat(message, base64_buf, message_len);
+             strlcat(message, "\">Download certificate</a>", message_len);
+          }
+          free(base64_buf);
+       }
 
       cert = cert->next;
    }
@@ -453,6 +458,7 @@ extern void ssl_send_certificate_error(struct client_state *csp)
    csp->flags &= ~CSP_FLAG_CLIENT_CONNECTION_KEEP_ALIVE;
    csp->flags |= CSP_FLAG_SERVER_SOCKET_TAINTED;
 #endif
+   free(message);
 }
 
 
